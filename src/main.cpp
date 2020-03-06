@@ -133,6 +133,14 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
     //     - Ready queue if time slice elapsed or process was preempted
     //  - Wait context switching time
     //  * Repeat until all processes in terminated state
+
+    Process *p;
+    {std::lock_guard<std::mutex> lock(shared_data->mutex);
+        Process *p = shared_data->ready_queue.front();
+    }
+    p->setCpuCore(core_id);
+    
+
 }
 
 int printProcessOutput(std::vector<Process*>& processes, std::mutex& mutex)
