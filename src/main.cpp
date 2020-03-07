@@ -18,6 +18,8 @@ typedef struct SchedulerData {
     uint32_t context_switch;
     uint32_t time_slice;
     std::list<Process*> ready_queue;
+    std::vector<Process*> terminated;
+    std::vector<Process*> io_q;
     bool all_terminated;
 } SchedulerData;
 
@@ -76,18 +78,44 @@ int main(int argc, char **argv)
 
     // main thread work goes here:
     int num_lines = 0;
+    int num_terminated = 0;
     while (!(shared_data->all_terminated))
     {
         // clear output from previous iteration
         clearOutput(num_lines);
 
-        // start new processes at their appropriate start time
+        // start new processes at their appropriate start time <-locked ready q
+        {   
+            std::lock_guard<std::mutex> lock(shared_data->mutex);
+            uint32_t currTime = currentTime();
+            if(processes.size() == shared_data->terminated.size())
+            {
+                shared_data->all_terminated = true;
+            }
 
-        // determine when an I/O burst finishes and put the process back in the ready queue
+            for(int i = 0; i < processes.size(); i++)
+            {
+                Process::State state = processes[i]->getState();
+                if(state == Process::State::NotStarted)
+                {
+                    //check if it should be started
+                    if(processes[i]->getStartTime() <= currTime)
+                    {
+                        processes[i]->setState(Process::State::Ready, currTime);
+                        shared_data->ready_queue.push_back(processes[i]);
+                    }
+                }
+            }
 
         // sort the ready queue (if needed - based on scheduling algorithm)
+        //^check algorithm and relevant info of each item in ready q
 
-        // determine if all processes are in the terminated state
+
+
+        }//unlock
+
+       
+        // determine if all processes are in the terminated state <- release lock on ready q
 
         // output process status table
         num_lines = printProcessOutput(processes, shared_data->mutex);
@@ -134,13 +162,13 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
     //  - Wait context switching time
     //  * Repeat until all processes in terminated state
 
+
     Process *p;
     {std::lock_guard<std::mutex> lock(shared_data->mutex);
-        Process *p = shared_data->ready_queue.front();
+        Process *p = shared_data->ready_queue.pop_front();
     }
     p->setCpuCore(core_id);
     
-
 }
 
 int printProcessOutput(std::vector<Process*>& processes, std::mutex& mutex)
