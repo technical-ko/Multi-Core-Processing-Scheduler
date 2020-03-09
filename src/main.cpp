@@ -162,13 +162,20 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
     //  - Wait context switching time
     //  * Repeat until all processes in terminated state
 
+    //while (!shared_data->all_terminated){
+        Process *p;
+        if (shared_data->ready_queue.size() > 0){
+            std::lock_guard<std::mutex> lock(shared_data->mutex);
+            p = shared_data->ready_queue.front();
+            p->setState(Process::State::Running, currentTime());
+            p->updateProcess(currentTime());
+            p->setLastCpuTime(currentTime());
+            shared_data->ready_queue.pop_front();
+        }
+        p->setCpuCore(core_id);
 
-    Process *p;
-    if (shared_data->ready_queue.size() > 0){
-        std::lock_guard<std::mutex> lock(shared_data->mutex);
-        Process *p = shared_data->ready_queue.pop_front();
-    }
-    p->setCpuCore(core_id);
+
+    //}
     
 }
 
