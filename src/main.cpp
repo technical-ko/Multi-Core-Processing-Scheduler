@@ -164,7 +164,8 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
 
 
     Process *p;
-    {std::lock_guard<std::mutex> lock(shared_data->mutex);
+    if (shared_data->ready_queue.size() > 0){
+        std::lock_guard<std::mutex> lock(shared_data->mutex);
         Process *p = shared_data->ready_queue.pop_front();
     }
     p->setCpuCore(core_id);
