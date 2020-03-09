@@ -85,14 +85,9 @@ int main(int argc, char **argv)
         clearOutput(num_lines);
 
         // start new processes at their appropriate start time <-locked ready q
-        {   
-            std::lock_guard<std::mutex> lock(shared_data->mutex);
+        {std::lock_guard<std::mutex> lock(shared_data->mutex);
+            
             uint32_t currTime = currentTime();
-            if(processes.size() == shared_data->terminated.size())
-            {
-                shared_data->all_terminated = true;
-            }
-
             for(int i = 0; i < processes.size(); i++)
             {
                 Process::State state = processes[i]->getState();
@@ -111,6 +106,10 @@ int main(int argc, char **argv)
         //^check algorithm and relevant info of each item in ready q
 
 
+        if(processes.size() == shared_data->terminated.size())
+        {
+            shared_data->all_terminated = true;
+        }
 
         }//unlock
 
