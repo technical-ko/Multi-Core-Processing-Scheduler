@@ -23,6 +23,8 @@ Process::Process(ProcessDetails details, uint32_t current_time)
     turn_time = 0;
     wait_time = 0;
     cpu_time = 0;
+    lastCpuTime = 0;
+    lastWaitTime = 0;
     remain_time = 0;
     for (i = 0; i < num_bursts; i+=2)
     {
@@ -35,47 +37,71 @@ Process::~Process()
     delete[] burst_times;
 }
 
-uint16_t Process::getPid()
+uint16_t Process::getPid() const
 {
     return pid;
 }
 
-uint32_t Process::getStartTime()
+uint32_t Process::getStartTime() const
 {
     return start_time;
 }
 
-uint8_t Process::getPriority()
+// Gets the most recent time the process was placed on the core
+uint32_t Process::getLastCpuTime() const
+{
+    return lastCpuTime;
+}
+
+// Sets the last cpu time to the current time
+void Process::setLastCpuTime(uint32_t current_time)
+{
+    lastCpuTime = current_time;
+}
+
+// Gets the most recent time the process was placed into the ready queue
+uint32_t Process::getLastWaitTime() const
+{
+    return lastWaitTime;
+}
+
+// Sets the last wait time to the current time
+void Process::setLastWaitTime(uint32_t current_time)
+{
+    lastWaitTime = current_time;
+}
+
+uint8_t Process::getPriority() const
 {
     return priority;
 }
 
-Process::State Process::getState()
+Process::State Process::getState() const
 {
     return state;
 }
 
-int8_t Process::getCpuCore()
+int8_t Process::getCpuCore() const
 {
     return core;
 }
 
-double Process::getTurnaroundTime()
+double Process::getTurnaroundTime() const
 {
     return (double)turn_time / 1000.0;
 }
 
-double Process::getWaitTime()
+double Process::getWaitTime() const
 {
     return (double)wait_time / 1000.0;
 }
 
-double Process::getCpuTime()
+double Process::getCpuTime() const
 {
     return (double)cpu_time / 1000.0;
 }
 
-double Process::getRemainingTime()
+double Process::getRemainingTime() const
 {
     return (double)remain_time / 1000.0;
 }
@@ -98,6 +124,11 @@ void Process::updateProcess(uint32_t current_time)
 {
     // use `current_time` to update turnaround time, wait time, burst times, 
     // cpu time, and remaining time
+
+    turn_time = current_time - launch_time;
+    cpu_time = cpu_time + (current_time - lastCpuTime);
+    wait_time = wait_time + (current_time - lastWaitTime);
+
 }
 
 void Process::updateBurstTime(int burst_idx, uint32_t new_time)
