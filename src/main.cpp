@@ -161,21 +161,31 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
     //     - Ready queue if time slice elapsed or process was preempted
     //  - Wait context switching time
     //  * Repeat until all processes in terminated state
-
-    //while (!shared_data->all_terminated){
-        Process *p;
-        if (shared_data->ready_queue.size() > 0){
+    Process *p;
+    p = NULL;
+    while ((shared_data->all_terminated) != true){
+        if (shared_data->ready_queue.size() > 0 && p == NULL){
             std::lock_guard<std::mutex> lock(shared_data->mutex);
             p = shared_data->ready_queue.front();
-            p->setState(Process::State::Running, currentTime());
-            p->updateProcess(currentTime());
-            p->setLastCpuTime(currentTime());
             shared_data->ready_queue.pop_front();
+            p->setState(Process::State::Running, currentTime());
+            p->setCpuCore(core_id);
         }
-        p->setCpuCore(core_id);
+        if (p != NULL){
+            p->updateProcess(currentTime());
+            //shared_data->ready_queue.push_back(p);
+        }
+        /*if (p->){ IF CPU BURST TIME HAS ELAPSED && PROCESS HAS NOT FINISHED
+            p->setState(Process::State::IO, currentTime);
+            p->updateProcess(currentTime());
+        }*/
+        if (p->getRemainingTime() == 0){
+            p->setState(Process::State::Terminated, currentTime());
+            p = NULL;
+        }
 
 
-    //}
+    }
     
 }
 
