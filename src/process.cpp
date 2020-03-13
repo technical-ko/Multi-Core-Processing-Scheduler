@@ -20,17 +20,19 @@ Process::Process(ProcessDetails details, uint32_t current_time)
         launch_time = current_time;
     }
     core = -1;
-    total_remain_time = remain_time;
     turn_time = 0;
     wait_time = 0;
     cpu_time = 0;
     lastCpuTime = 0;
     lastWaitTime = 0;
     remain_time = 0;
+    burst_index = 0;
+    into_queue_time = 0;
     for (i = 0; i < num_bursts; i+=2)
     {
         remain_time += burst_times[i];
     }
+    total_remain_time = remain_time;
 }
 
 Process::~Process()
@@ -72,6 +74,10 @@ void Process::setLastWaitTime(uint32_t current_time)
     lastWaitTime = current_time;
 }
 
+void Process::setIntoQueueTime(uint32_t current_time){
+    into_queue_time = current_time;
+}
+
 uint8_t Process::getPriority() const
 {
     return priority;
@@ -109,7 +115,7 @@ double Process::getRemainingTime() const
 
 void Process::setState(State new_state, uint32_t current_time)
 {
-    if (state == State::NotStarted && new_state == State::Ready)
+    if (state == State::Ready && new_state == State::Running)
     {
         launch_time = current_time;
     }
@@ -125,14 +131,15 @@ void Process::updateProcess(uint32_t current_time)
 {
     // use `current_time` to update turnaround time, wait time, burst times, 
     // cpu time, and remaining time
-
-    turn_time = current_time - launch_time;
+    if (state != Process::State::Terminated && launch_time != 0){
+        turn_time = current_time - launch_time;
+    }
     if (state == Process::State::Running){
         cpu_time = (current_time - launch_time);
         remain_time = total_remain_time - cpu_time;
     }
     else if (state == Process::State::Ready){
-        wait_time = wait_time + (current_time - launch_time);
+        wait_time = (current_time - into_queue_time);
     }
 
 }

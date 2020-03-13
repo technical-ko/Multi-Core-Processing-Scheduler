@@ -17,11 +17,13 @@ private:
     uint8_t priority;         // process priority (0-4)
     State state;              // process state
     int8_t core;              // CPU core currently running on
-    int32_t turn_time;        // total time since 'launch' (until terminated)
-    int32_t wait_time;        // total time spent in ready queue
+    uint32_t turn_time;        // total time since 'launch' (until terminated)
+    uint32_t wait_time;        // total time spent in ready queue
     int32_t cpu_time;         // total time spent running on a CPU core
     int32_t remain_time;      // CPU time remaining until terminated
-    int32_t total_remain_time;
+    uint32_t total_remain_time;
+    uint32_t into_queue_time;
+    int burst_index;
     uint32_t launch_time;     // actual time in ms (since epoch) that process was 'launched'
     uint32_t lastCpuTime;
     uint32_t lastWaitTime;
@@ -46,6 +48,7 @@ public:
 
     void setState(State new_state, uint32_t current_time);
     void setCpuCore(int8_t core_num);
+    void setIntoQueueTime(uint32_t current_time);
 
     void updateProcess(uint32_t current_time);
     void updateBurstTime(int burst_idx, uint32_t new_time);

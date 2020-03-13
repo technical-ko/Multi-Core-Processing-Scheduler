@@ -32,6 +32,7 @@ std::string processStateToString(Process::State state);
 int main(int argc, char **argv)
 {
     // ensure user entered a command line parameter for configuration file name
+    uint32_t programStartTime = currentTime();
     if (argc < 2)
     {
         std::cerr << "Error: must specify configuration file" << std::endl;
@@ -63,6 +64,7 @@ int main(int argc, char **argv)
         if (p->getState() == Process::State::Ready)
         {
             shared_data->ready_queue.push_back(p);
+            p->setIntoQueueTime(currentTime());
         }
     }
 
@@ -86,7 +88,7 @@ int main(int argc, char **argv)
 
         // start new processes at their appropriate start time <-locked ready q
         {   
-            std::lock_guard<std::mutex> lock(shared_data->mutex);
+            //std::lock_guard<std::mutex> lock(shared_data->mutex);
             uint32_t currTime = currentTime();
             if(processes.size() == shared_data->terminated.size())
             {
@@ -99,11 +101,15 @@ int main(int argc, char **argv)
                 if(state == Process::State::NotStarted)
                 {
                     //check if it should be started
-                    if(processes[i]->getStartTime() <= currTime)
+                    if(processes[i]->getStartTime() >= currTime - programStartTime)
                     {
                         processes[i]->setState(Process::State::Ready, currTime);
                         shared_data->ready_queue.push_back(processes[i]);
+                        processes[i]->setIntoQueueTime(currentTime());
                     }
+                }
+                if (state == Process::State::Ready || state == Process::State::IO){
+                    processes[i]->updateProcess(currentTime());
                 }
             }
 
@@ -130,6 +136,7 @@ int main(int argc, char **argv)
     {
         schedule_threads[i].join();
     }
+
 
     // print final statistics
     //  - CPU utilization
@@ -164,8 +171,12 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
     Process *p;
     p = NULL;
     while ((shared_data->all_terminated) != true){
-        if (shared_data->ready_queue.size() > 0 && p == NULL){
+        int readySize = 0;
+        {
             std::lock_guard<std::mutex> lock(shared_data->mutex);
+            readySize = shared_data->ready_queue.size();
+        }
+        if ( readySize > 0 && p == NULL){
             p = shared_data->ready_queue.front();
             shared_data->ready_queue.pop_front();
             p->setState(Process::State::Running, currentTime());
@@ -173,18 +184,19 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
         }
         if (p != NULL){
             p->updateProcess(currentTime());
-            //shared_data->ready_queue.push_back(p);
+            if (p->getRemainingTime() <= 0){
+                p->setState(Process::State::Terminated, currentTime());
+                p->setCpuCore(-1);
+                shared_data->terminated.push_back(p);
+                p = NULL;
+                uint32_t lastContextTime = currentTime();
+                while (shared_data->context_switch >= currentTime() - lastContextTime){};
+            }
         }
         /*if (p->){ IF CPU BURST TIME HAS ELAPSED && PROCESS HAS NOT FINISHED
             p->setState(Process::State::IO, currentTime);
             p->updateProcess(currentTime());
         }*/
-        if (p->getRemainingTime() == 0){
-            p->setState(Process::State::Terminated, currentTime());
-            p = NULL;
-        }
-
-
     }
     
 }
