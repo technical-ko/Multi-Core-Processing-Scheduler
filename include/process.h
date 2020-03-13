@@ -21,6 +21,7 @@ private:
     int32_t wait_time;        // total time spent in ready queue
     int32_t cpu_time;         // total time spent running on a CPU core
     int32_t remain_time;      // CPU time remaining until terminated
+    int32_t total_remain_time;
     uint32_t launch_time;     // actual time in ms (since epoch) that process was 'launched'
     uint32_t lastCpuTime;
     uint32_t lastWaitTime;

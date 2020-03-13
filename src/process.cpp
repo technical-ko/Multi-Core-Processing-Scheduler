@@ -20,6 +20,7 @@ Process::Process(ProcessDetails details, uint32_t current_time)
         launch_time = current_time;
     }
     core = -1;
+    total_remain_time = remain_time;
     turn_time = 0;
     wait_time = 0;
     cpu_time = 0;
@@ -126,8 +127,13 @@ void Process::updateProcess(uint32_t current_time)
     // cpu time, and remaining time
 
     turn_time = current_time - launch_time;
-    cpu_time = cpu_time + (current_time - lastCpuTime);
-    wait_time = wait_time + (current_time - lastWaitTime);
+    if (state == Process::State::Running){
+        cpu_time = (current_time - launch_time);
+        remain_time = total_remain_time - cpu_time;
+    }
+    else if (state == Process::State::Ready){
+        wait_time = wait_time + (current_time - launch_time);
+    }
 
 }
 
