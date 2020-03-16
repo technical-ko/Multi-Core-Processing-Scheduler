@@ -23,10 +23,12 @@ private:
     int32_t remain_time;      // CPU time remaining until terminated
     uint32_t total_remain_time;
     uint32_t into_queue_time;
-    int burst_index;
     uint32_t launch_time;     // actual time in ms (since epoch) that process was 'launched'
     uint32_t lastCpuTime;
     uint32_t lastWaitTime;
+    uint32_t burstStartTime;
+    uint32_t burstTimeElapsed;
+    bool launched;
     // you are welcome to add other private data fields here (e.g. actual time process was put in 
     // ready queue or i/o queue)
 
@@ -38,6 +40,7 @@ public:
     uint32_t getStartTime() const;
     uint32_t getLastCpuTime() const;
     uint32_t getLastWaitTime() const;
+    uint32_t getBurstTimeElapsed() const;
     uint8_t getPriority() const;
     State getState() const;
     int8_t getCpuCore() const;
@@ -45,15 +48,22 @@ public:
     double getWaitTime() const;
     double getCpuTime() const;
     double getRemainingTime() const;
+    uint32_t getCurrentBurstTime() const;
+    bool isLaunched();
 
     void setState(State new_state, uint32_t current_time);
     void setCpuCore(int8_t core_num);
     void setIntoQueueTime(uint32_t current_time);
+    void setBurstStartTime(uint32_t current_time);
+    void setLaunched(bool set);
 
     void updateProcess(uint32_t current_time);
     void updateBurstTime(int burst_idx, uint32_t new_time);
+    void updateCurrentBurst();
     void setLastCpuTime(uint32_t current_time);
     void setLastWaitTime(uint32_t current_time);
+    void setLaunchTime(uint32_t current_time);
+    void resetBurstTimeElapsed();
 };
 
 // Comparators: used in std::list sort() method

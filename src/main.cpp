@@ -108,8 +108,17 @@ int main(int argc, char **argv)
                         processes[i]->setIntoQueueTime(currentTime());
                     }
                 }
-                if (state == Process::State::Ready || state == Process::State::IO){
+                if (state == Process::State::Ready){
                     processes[i]->updateProcess(currentTime());
+                }
+                if (state == Process::State::IO){
+                    processes[i]->updateProcess(currentTime());
+                    if (processes[i]->getBurstTimeElapsed() >= processes[i]->getCurrentBurstTime()){
+                        processes[i]->updateCurrentBurst();
+                        processes[i]->setState(Process::State::Ready, currentTime());
+                        shared_data->ready_queue.push_back(processes[i]);
+                        processes[i]->setIntoQueueTime(currentTime());
+                    }
                 }
             }
 
@@ -181,6 +190,12 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
             shared_data->ready_queue.pop_front();
             p->setState(Process::State::Running, currentTime());
             p->setCpuCore(core_id);
+            if (p->isLaunched() != true){
+                p->setLaunched(true);
+                p->setLaunchTime(currentTime());
+            }
+            p->resetBurstTimeElapsed();
+            p->setBurstStartTime(currentTime());
         }
         if (p != NULL){
             p->updateProcess(currentTime());
@@ -188,6 +203,17 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
                 p->setState(Process::State::Terminated, currentTime());
                 p->setCpuCore(-1);
                 shared_data->terminated.push_back(p);
+                p = NULL;
+                uint32_t lastContextTime = currentTime();
+                while (shared_data->context_switch >= currentTime() - lastContextTime){};
+            }
+            else if (p->getBurstTimeElapsed() > p->getCurrentBurstTime()){
+                p->setState(Process::State::IO, currentTime());
+                p->updateCurrentBurst();
+                p->setBurstStartTime(currentTime());
+                p->resetBurstTimeElapsed();
+                p->updateProcess(currentTime());
+                p->setCpuCore(-1);
                 p = NULL;
                 uint32_t lastContextTime = currentTime();
                 while (shared_data->context_switch >= currentTime() - lastContextTime){};

@@ -26,8 +26,10 @@ Process::Process(ProcessDetails details, uint32_t current_time)
     lastCpuTime = 0;
     lastWaitTime = 0;
     remain_time = 0;
-    burst_index = 0;
     into_queue_time = 0;
+    burstStartTime = 0;
+    burstTimeElapsed = 0;
+    launched = false;
     for (i = 0; i < num_bursts; i+=2)
     {
         remain_time += burst_times[i];
@@ -78,6 +80,27 @@ void Process::setIntoQueueTime(uint32_t current_time){
     into_queue_time = current_time;
 }
 
+void Process::setBurstStartTime(uint32_t current_time){
+    burstStartTime = current_time;
+}
+
+void Process::updateCurrentBurst(){
+    current_burst++;
+}
+
+uint32_t Process::getCurrentBurstTime() const {
+    return burst_times[current_burst];
+}
+
+uint32_t Process::getBurstTimeElapsed() const
+{
+    return burstTimeElapsed;
+}
+
+void Process::resetBurstTimeElapsed(){
+    burstTimeElapsed = 0;
+}
+
 uint8_t Process::getPriority() const
 {
     return priority;
@@ -113,13 +136,21 @@ double Process::getRemainingTime() const
     return (double)remain_time / 1000.0;
 }
 
+bool Process::isLaunched() {
+    return launched;
+}
+
+void Process::setLaunched(bool set){
+    launched = set;
+}
+
 void Process::setState(State new_state, uint32_t current_time)
 {
-    if (state == State::Ready && new_state == State::Running)
-    {
-        launch_time = current_time;
-    }
     state = new_state;
+}
+
+void Process::setLaunchTime(uint32_t current_time){
+    launch_time = current_time;
 }
 
 void Process::setCpuCore(int8_t core_num)
@@ -135,11 +166,20 @@ void Process::updateProcess(uint32_t current_time)
         turn_time = current_time - launch_time;
     }
     if (state == Process::State::Running){
-        cpu_time = (current_time - launch_time);
+        uint32_t burstTimesSoFar = 0;
+        for (int i = current_burst-2; i >=0; i-=2){
+            burstTimesSoFar = burstTimesSoFar + burst_times[i];
+        }
+        cpu_time = burstTimesSoFar + (current_time - burstStartTime);
         remain_time = total_remain_time - cpu_time;
+        burstTimeElapsed = current_time - burstStartTime;
+
     }
-    else if (state == Process::State::Ready){
+    if (state == Process::State::Ready){
         wait_time = (current_time - into_queue_time);
+    }
+    if (state == Process::State::IO){
+        burstTimeElapsed = current_time - burstStartTime;
     }
 
 }
