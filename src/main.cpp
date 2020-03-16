@@ -48,7 +48,7 @@ int main(int argc, char **argv)
     SchedulerConfig *config = readConfigFile(argv[1]);
 
     // store configuration parameters in shared data object
-    uint8_t num_cores = config->cores;
+    uint8_t num_cores = /*config->cores*/1;
     shared_data = new SchedulerData();
     shared_data->algorithm = config->algorithm;
     shared_data->context_switch = config->context_switch;
@@ -179,6 +179,9 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
     //  * Repeat until all processes in terminated state
     Process *p;
     p = NULL;
+    bool inRobin = false;
+    uint32_t roundRobinStart = 0;
+    uint16_t currentBurst = -1;
     while ((shared_data->all_terminated) != true){
         int readySize = 0;
         {
@@ -195,9 +198,12 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
                 p->setLaunchTime(currentTime());
             }
             p->resetBurstTimeElapsed();
-            p->setBurstStartTime(currentTime());
+            if (currentBurst != p->getCurrentBurst()){
+                p->setBurstStartTime(currentTime());
+            }
         }
-        if (p != NULL){
+        //Code for First Come First Serve
+        if (p != NULL && (shared_data->algorithm == 0 || shared_data->algorithm == 1)){
             p->updateProcess(currentTime());
             if (p->getRemainingTime() <= 0){
                 p->setState(Process::State::Terminated, currentTime());
@@ -215,6 +221,47 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
                 p->updateProcess(currentTime());
                 p->setCpuCore(-1);
                 p = NULL;
+                uint32_t lastContextTime = currentTime();
+                while (shared_data->context_switch >= currentTime() - lastContextTime){};
+            }
+        }
+        //Code for Round Robin
+        if (p != NULL && shared_data->algorithm == 2){
+            if (!inRobin){
+                roundRobinStart = currentTime();
+                inRobin = true;
+                currentBurst = p->getCurrentBurst();
+
+            }
+            p->updateProcess(currentTime());
+            if (p->getRemainingTime() <= 0){
+                p->setState(Process::State::Terminated, currentTime());
+                p->setCpuCore(-1);
+                shared_data->terminated.push_back(p);
+                p = NULL;
+                uint32_t lastContextTime = currentTime();
+                while (shared_data->context_switch >= currentTime() - lastContextTime){};
+            }
+            else if (p->getBurstTimeElapsed() > p->getCurrentBurstTime()){
+                p->setState(Process::State::IO, currentTime());
+                p->updateCurrentBurst();
+                p->setBurstStartTime(currentTime());
+                p->resetBurstTimeElapsed();
+                p->updateProcess(currentTime());
+                p->setCpuCore(-1);
+                p = NULL;
+                inRobin = false;
+                uint32_t lastContextTime = currentTime();
+                while (shared_data->context_switch >= currentTime() - lastContextTime){};
+            }
+            else if ((currentTime() - roundRobinStart) >= shared_data->time_slice){
+                p->setState(Process::State::Ready, currentTime());
+                p->updateBurstTime(p->getCurrentBurst(), currentTime() - p->getBurstStartTime());
+                p->setIntoQueueTime(currentTime());
+                p->setCpuCore(-1);
+                shared_data->ready_queue.push_back(p);
+                p = NULL;
+                inRobin = false;
                 uint32_t lastContextTime = currentTime();
                 while (shared_data->context_switch >= currentTime() - lastContextTime){};
             }

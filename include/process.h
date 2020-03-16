@@ -2,6 +2,7 @@
 #define __PROCESS_H_
 
 #include "configreader.h"
+#include "vector"
 
 // Process class
 class Process {
@@ -14,6 +15,7 @@ private:
     uint16_t num_bursts;      // number of CPU/IO bursts
     uint16_t current_burst;   // current index into the CPU/IO burst array
     uint32_t *burst_times;    // CPU/IO burst array of times (in ms)
+    uint32_t *cpu_io_times;
     uint8_t priority;         // process priority (0-4)
     State state;              // process state
     int8_t core;              // CPU core currently running on
@@ -29,6 +31,9 @@ private:
     uint32_t burstStartTime;
     uint32_t burstTimeElapsed;
     bool launched;
+    bool fromRunningToReady;
+    uint32_t waitTimeNow;
+    std::vector<uint32_t> wait_times;
     // you are welcome to add other private data fields here (e.g. actual time process was put in 
     // ready queue or i/o queue)
 
@@ -50,6 +55,8 @@ public:
     double getRemainingTime() const;
     uint32_t getCurrentBurstTime() const;
     bool isLaunched();
+    uint16_t getCurrentBurst() const;
+    uint32_t getBurstStartTime() const;
 
     void setState(State new_state, uint32_t current_time);
     void setCpuCore(int8_t core_num);
