@@ -101,7 +101,7 @@ int main(int argc, char **argv)
                 if(state == Process::State::NotStarted)
                 {
                     //check if it should be started
-                    if(processes[i]->getStartTime() >= currTime - programStartTime)
+                    if(processes[i]->getStartTime() <= (currTime - programStartTime))
                     {
                         processes[i]->setState(Process::State::Ready, currTime);
                         shared_data->ready_queue.push_back(processes[i]);
@@ -219,10 +219,6 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
                 while (shared_data->context_switch >= currentTime() - lastContextTime){};
             }
         }
-        /*if (p->){ IF CPU BURST TIME HAS ELAPSED && PROCESS HAS NOT FINISHED
-            p->setState(Process::State::IO, currentTime);
-            p->updateProcess(currentTime());
-        }*/
     }
     
 }
