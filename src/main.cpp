@@ -92,15 +92,48 @@ int main(int argc, char **argv)
             uint32_t currTime = currentTime();
             for(int i = 0; i < processes.size(); i++)
             {
+                bool preEmpt = false;
                 Process::State state = processes[i]->getState();
                 if(state == Process::State::NotStarted)
                 {
                     //check if it should be started
                     if(processes[i]->getStartTime() <= (currTime - programStartTime))
                     {
-                        processes[i]->setState(Process::State::Ready, currTime);
-                        shared_data->ready_queue.push_back(processes[i]);
-                        processes[i]->setIntoQueueTime(currentTime());
+                        //Code for Preemptive Priority 
+                        //************UNTESTED***********
+                        if(shared_data->algorithm == ScheduleAlgorithm::PP)
+                        {                
+                            //find the process with the highest priority number currently running
+                            Process* max = NULL;
+                            for(int j = 0; j < processes.size(); j++)
+                            {
+                                if(processes[j]->getState() == Process::State::Running)
+                                {
+                                    if(max == NULL || processes[j]->getPriority() < max->getPriority())
+                                    {
+                                        max = processes[j];
+                                    }
+                                }
+                            }
+                            //compare max to newly starting process
+                            if(max != NULL)
+                            {
+                                if(max->getPriority() > processes[i]->getPriority())
+                                {
+                                    //KO:
+                                    //max->setKicker(processes[i]); <---need to store a reference to the process that kicked max
+                                    preEmpt = true;
+                                }
+                            }
+                        }
+                        
+                        //check if process has already been added due to preemption
+                        if(!preEmpt)
+                        {    
+                            processes[i]->setState(Process::State::Ready, currTime);
+                            shared_data->ready_queue.push_back(processes[i]);
+                            processes[i]->setIntoQueueTime(currentTime());
+                        }
                     }
                 }
                 if (state == Process::State::Ready){
@@ -117,8 +150,18 @@ int main(int argc, char **argv)
                 }
             }
 
-        // sort the ready queue (if needed - based on scheduling algorithm)
-        //^check algorithm and relevant info of each item in ready q
+            // sort the ready queue (if needed - based on scheduling algorithm)
+            //^check algorithm and relevant info of each item in ready q
+            if(shared_data->algorithm == ScheduleAlgorithm::SJF)
+            {
+                shared_data->ready_queue.sort(SjfComparator());
+            }
+            if(shared_data->algorithm == ScheduleAlgorithm::PP)
+            {
+                shared_data->ready_queue.sort(PpComparator());
+            }
+            
+
 
 
         if(processes.size() == shared_data->terminated.size())
@@ -265,8 +308,27 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
                 while (shared_data->context_switch >= currentTime() - lastContextTime){};
             }
         }
-    }
-    
+        //Code for PP
+        if(p != NULL && shared_data->algorithm == ScheduleAlgorithm::PP){
+            
+            
+            //KO:
+            //not sure how this preemption bit should go:
+            //if(p-isPreEmpted == true )
+                //place current process into the readyq
+                
+                //wait context switching time
+
+                //run new process returned by isPreEmpted()
+                
+            
+
+        }
+        
+        
+        
+      
+    }   
 }
 
 int printProcessOutput(std::vector<Process*>& processes, std::mutex& mutex)
