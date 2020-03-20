@@ -48,7 +48,7 @@ int main(int argc, char **argv)
     SchedulerConfig *config = readConfigFile(argv[1]);
 
     // store configuration parameters in shared data object
-    uint8_t num_cores = /*config->cores*/1;
+    uint8_t num_cores = config->cores;
     shared_data = new SchedulerData();
     shared_data->algorithm = config->algorithm;
     shared_data->context_switch = config->context_switch;
@@ -98,42 +98,10 @@ int main(int argc, char **argv)
                 {
                     //check if it should be started
                     if(processes[i]->getStartTime() <= (currTime - programStartTime))
-                    {
-                        //Code for Preemptive Priority 
-                        //************UNTESTED***********
-                        if(shared_data->algorithm == ScheduleAlgorithm::PP)
-                        {                
-                            //find the process with the highest priority number currently running
-                            Process* max = NULL;
-                            for(int j = 0; j < processes.size(); j++)
-                            {
-                                if(processes[j]->getState() == Process::State::Running)
-                                {
-                                    if(max == NULL || processes[j]->getPriority() < max->getPriority())
-                                    {
-                                        max = processes[j];
-                                    }
-                                }
-                            }
-                            //compare max to newly starting process
-                            if(max != NULL)
-                            {
-                                if(max->getPriority() > processes[i]->getPriority())
-                                {
-                                    //KO:
-                                    //max->setKicker(processes[i]); <---need to store a reference to the process that kicked max
-                                    preEmpt = true;
-                                }
-                            }
-                        }
-                        
-                        //check if process has already been added due to preemption
-                        if(!preEmpt)
-                        {    
-                            processes[i]->setState(Process::State::Ready, currTime);
-                            shared_data->ready_queue.push_back(processes[i]);
-                            processes[i]->setIntoQueueTime(currentTime());
-                        }
+                    {    
+                        processes[i]->setState(Process::State::Ready, currTime);
+                        shared_data->ready_queue.push_back(processes[i]);
+                        processes[i]->setIntoQueueTime(currentTime());
                     }
                 }
                 if (state == Process::State::Ready){
@@ -222,8 +190,9 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
     Process *p;
     p = NULL;
     bool inRobin = false;
-    uint32_t roundRobinStart = 0;
+    bool inProcess = false;
     uint16_t currentBurst = -1;
+    uint32_t currentBurstTime = 0;
     while ((shared_data->all_terminated) != true){
         int readySize = 0;
         {
@@ -233,6 +202,7 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
         if ( readySize > 0 && p == NULL){
             p = shared_data->ready_queue.front();
             shared_data->ready_queue.pop_front();
+            readySize = readySize - 1;
             p->setState(Process::State::Running, currentTime());
             p->setCpuCore(core_id);
             if (p->isLaunched() != true){
@@ -244,12 +214,19 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
                 p->setBurstStartTime(currentTime());
             }
         }
+        if (shared_data->algorithm == ScheduleAlgorithm::RR && p != NULL){
+            p->setRRFlag();
+        }
+        if (shared_data->algorithm == ScheduleAlgorithm::PP && p != NULL){
+            p->setPPFlag();
+        }
         //Code for First Come First Serve
-        if (p != NULL && (shared_data->algorithm == 0 || shared_data->algorithm == 1)){
+        if (p != NULL && (shared_data->algorithm == ScheduleAlgorithm::FCFS || shared_data->algorithm == ScheduleAlgorithm::SJF)){
             p->updateProcess(currentTime());
             if (p->getRemainingTime() <= 0){
                 p->setState(Process::State::Terminated, currentTime());
                 p->setCpuCore(-1);
+                p->updateProcess(currentTime());
                 shared_data->terminated.push_back(p);
                 p = NULL;
                 uint32_t lastContextTime = currentTime();
@@ -268,37 +245,38 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
             }
         }
         //Code for Round Robin
-        if (p != NULL && shared_data->algorithm == 2){
+        if (p != NULL && shared_data->algorithm == ScheduleAlgorithm::RR){
+            //p->updateProcess(currentTime());
             if (!inRobin){
-                roundRobinStart = currentTime();
+                p->setRoundRobinStartTime(currentTime());
                 inRobin = true;
                 currentBurst = p->getCurrentBurst();
-
+                currentBurstTime = p->getCurrentBurstTime();
             }
             p->updateProcess(currentTime());
             if (p->getRemainingTime() <= 0){
                 p->setState(Process::State::Terminated, currentTime());
                 p->setCpuCore(-1);
+                p->updateProcess(currentTime());
                 shared_data->terminated.push_back(p);
                 p = NULL;
                 uint32_t lastContextTime = currentTime();
                 while (shared_data->context_switch >= currentTime() - lastContextTime){};
             }
-            else if (p->getBurstTimeElapsed() > p->getCurrentBurstTime()){
+            else if (p->getBurstTimeElapsed() > currentBurstTime){
                 p->setState(Process::State::IO, currentTime());
                 p->updateCurrentBurst();
                 p->setBurstStartTime(currentTime());
                 p->resetBurstTimeElapsed();
-                p->updateProcess(currentTime());
                 p->setCpuCore(-1);
                 p = NULL;
                 inRobin = false;
                 uint32_t lastContextTime = currentTime();
                 while (shared_data->context_switch >= currentTime() - lastContextTime){};
             }
-            else if ((currentTime() - roundRobinStart) >= shared_data->time_slice){
+            else if ((currentTime() - p->getRoundRobinStartTime()) >= shared_data->time_slice){
                 p->setState(Process::State::Ready, currentTime());
-                p->updateBurstTime(p->getCurrentBurst(), currentTime() - p->getBurstStartTime());
+                p->updateBurstTime(p->getCurrentBurst(), currentTime() - p->getRoundRobinStartTime());
                 p->setIntoQueueTime(currentTime());
                 p->setCpuCore(-1);
                 shared_data->ready_queue.push_back(p);
@@ -310,17 +288,48 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
         }
         //Code for PP
         if(p != NULL && shared_data->algorithm == ScheduleAlgorithm::PP){
-            
-            
-            //KO:
-            //not sure how this preemption bit should go:
-            //if(p-isPreEmpted == true )
-                //place current process into the readyq
-                
-                //wait context switching time
-
-                //run new process returned by isPreEmpted()
-                
+            if (!inProcess){
+                p->setPPTime(currentTime());
+                inProcess = true;
+            }
+            p->updateProcess(currentTime());
+            if (readySize != 0){
+                if (shared_data->ready_queue.front()->getPriority() < p->getPriority()){
+                    p->setState(Process::State::Ready, currentTime());
+                    p->updateBurstTime(p->getCurrentBurst(), currentTime() - p->getPPTime());
+                    p->setIntoQueueTime(currentTime());
+                    p->setCpuCore(-1);
+                    shared_data->ready_queue.push_back(p);
+                    p = NULL;
+                    inProcess = false;
+                    uint32_t lastContextTime = currentTime();
+                    while (shared_data->context_switch >= currentTime() - lastContextTime){};
+                }
+            }
+            if (p != NULL){
+                if (p->getRemainingTime() <= 0 ){
+                    p->setState(Process::State::Terminated, currentTime());
+                    p->setCpuCore(-1);
+                    p->updateProcess(currentTime());
+                    shared_data->terminated.push_back(p);
+                    p = NULL;
+                    inProcess = false;
+                    uint32_t lastContextTime = currentTime();
+                    while (shared_data->context_switch >= currentTime() - lastContextTime){};
+                }
+                else if (p->getBurstTimeElapsed() > p->getCurrentBurstTime()){
+                    p->setState(Process::State::IO, currentTime());
+                    p->updateCurrentBurst();
+                    p->setBurstStartTime(currentTime());
+                    p->resetBurstTimeElapsed();
+                    p->updateProcess(currentTime());
+                    p->setCpuCore(-1);
+                    inProcess = false;
+                    p = NULL;
+                    uint32_t lastContextTime = currentTime();
+                    while (shared_data->context_switch >= currentTime() - lastContextTime){};
+                }
+            }
             
 
         }

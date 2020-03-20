@@ -34,6 +34,10 @@ private:
     bool fromRunningToReady;
     uint32_t waitTimeNow;
     std::vector<uint32_t> wait_times;
+    int rrFlag;
+    uint32_t roundRobinStartTime;
+    uint32_t ppTime;
+    int ppFlag;
     // you are welcome to add other private data fields here (e.g. actual time process was put in 
     // ready queue or i/o queue)
 
@@ -57,6 +61,8 @@ public:
     bool isLaunched();
     uint16_t getCurrentBurst() const;
     uint32_t getBurstStartTime() const;
+    uint32_t getRoundRobinStartTime() const;
+    uint32_t getPPTime() const;
 
     void setState(State new_state, uint32_t current_time);
     void setCpuCore(int8_t core_num);
@@ -71,6 +77,10 @@ public:
     void setLastWaitTime(uint32_t current_time);
     void setLaunchTime(uint32_t current_time);
     void resetBurstTimeElapsed();
+    void setRRFlag();
+    void setRoundRobinStartTime(uint32_t current_time);
+    void setPPTime(uint32_t current_time);
+    void setPPFlag();
 };
 
 // Comparators: used in std::list sort() method

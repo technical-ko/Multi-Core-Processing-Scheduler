@@ -36,6 +36,10 @@ Process::Process(ProcessDetails details, uint32_t current_time)
     fromRunningToReady = false;
     wait_times;
     waitTimeNow = 0;
+    rrFlag = 0;
+    roundRobinStartTime = 0;
+    ppTime = 0;
+    ppFlag = 0;
     for (i = 0; i < num_bursts; i+=2)
     {
         remain_time += burst_times[i];
@@ -46,6 +50,29 @@ Process::Process(ProcessDetails details, uint32_t current_time)
 Process::~Process()
 {
     delete[] burst_times;
+}
+
+void Process::setPPFlag(){
+    ppFlag = 1;
+}
+uint32_t Process::getPPTime() const {
+    return ppTime;
+}
+
+void Process::setPPTime(uint32_t current_time){
+    ppTime = current_time;
+}
+
+uint32_t Process::getRoundRobinStartTime() const {
+    return roundRobinStartTime;
+}
+
+void Process::setRoundRobinStartTime(uint32_t current_time){
+    roundRobinStartTime = current_time;
+}
+
+void Process::setRRFlag(){
+    rrFlag = 1;
 }
 
 uint16_t Process::getPid() const
@@ -103,7 +130,7 @@ uint16_t Process::getCurrentBurst() const {
 }
 
 uint32_t Process::getCurrentBurstTime() const {
-    return burst_times[current_burst];
+    return cpu_io_times[current_burst];
 }
 
 uint32_t Process::getBurstTimeElapsed() const
@@ -160,9 +187,6 @@ void Process::setLaunched(bool set){
 
 void Process::setState(State new_state, uint32_t current_time)
 {
-    if (state == Process::State::Running && new_state == Process::State::Ready){
-        fromRunningToReady = true;
-    }
     if (state == Process::State::Ready && new_state == Process::State::Running){
         wait_times.push_back(waitTimeNow);
     }
@@ -185,22 +209,44 @@ void Process::updateProcess(uint32_t current_time)
     if (state != Process::State::Terminated && launch_time != 0){
         turn_time = current_time - launch_time;
     }
-    if (state == Process::State::Running){
+    if (state == Process::State::Running && rrFlag == 0){
         uint32_t burstTimesSoFar = 0;
-        if (fromRunningToReady){
-            for (int i = current_burst; i >=0; i-=2){
-                burstTimesSoFar = burstTimesSoFar + burst_times[i];
-            }
-            //fromRunningToReady = false;
-        }
-        else{
-            for (int i = current_burst-2; i >=0; i-=2){
-                burstTimesSoFar = burstTimesSoFar + cpu_io_times[i];
-            }
+        for (int i = current_burst-2; i >=0; i-=2){
+            burstTimesSoFar = burstTimesSoFar + cpu_io_times[i];
         }
         cpu_time = burstTimesSoFar + (current_time - burstStartTime);
         remain_time = total_remain_time - cpu_time;
         burstTimeElapsed = current_time - burstStartTime;
+
+    }
+    if (state == Process::State::Running && rrFlag == 1){
+        uint32_t burstTimesSoFar = 0;
+        uint32_t currentBurstTimesSoFar = 0;
+        if (cpu_io_times[current_burst] != burst_times[current_burst]){
+            burstTimesSoFar = cpu_io_times[current_burst] - burst_times[current_burst];
+            currentBurstTimesSoFar = cpu_io_times[current_burst] - burst_times[current_burst];
+        }
+        for (int i = current_burst-2; i >=0; i-=2){
+            burstTimesSoFar = burstTimesSoFar + cpu_io_times[i];
+        }
+        cpu_time = burstTimesSoFar + (current_time - roundRobinStartTime);
+        remain_time = total_remain_time - cpu_time;
+        burstTimeElapsed = currentBurstTimesSoFar + (current_time - roundRobinStartTime);
+
+    }
+    if (state == Process::State::Running && ppFlag == 1){
+        uint32_t burstTimesSoFar = 0;
+        uint32_t currentBurstTimesSoFar = 0;
+        if (cpu_io_times[current_burst] != burst_times[current_burst]){
+            burstTimesSoFar = cpu_io_times[current_burst] - burst_times[current_burst];
+            currentBurstTimesSoFar = cpu_io_times[current_burst] - burst_times[current_burst];
+        }
+        for (int i = current_burst-2; i >=0; i-=2){
+            burstTimesSoFar = burstTimesSoFar + cpu_io_times[i];
+        }
+        cpu_time = burstTimesSoFar + (current_time - ppTime);
+        remain_time = total_remain_time - cpu_time;
+        burstTimeElapsed = currentBurstTimesSoFar + (current_time - ppTime);
 
     }
     if (state == Process::State::Ready){
@@ -213,15 +259,17 @@ void Process::updateProcess(uint32_t current_time)
         wait_time = waitSums + waitTimeNow;
     }
     if (state == Process::State::IO){
-        fromRunningToReady = false;
         burstTimeElapsed = current_time - burstStartTime;
+    }
+    if (state == Process::State::Terminated){
+        remain_time = 0;
     }
 
 }
 
 void Process::updateBurstTime(int burst_idx, uint32_t new_time)
 {
-    burst_times[burst_idx] = new_time;
+    burst_times[burst_idx] = burst_times[burst_idx] - new_time;
 }
 
 
