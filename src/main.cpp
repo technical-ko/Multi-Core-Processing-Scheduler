@@ -81,14 +81,16 @@ int main(int argc, char **argv)
     // main thread work goes here:
     int num_lines = 0;
     int num_terminated = 0;
+    uint32_t end_time = 0;
+    uint32_t half_time = 0;
     while (!(shared_data->all_terminated))
     {
         // clear output from previous iteration
         clearOutput(num_lines);
 
         // start new processes at their appropriate start time <-locked ready q
-        {   
-            //std::lock_guard<std::mutex> lock(shared_data->mutex);
+        {//LOCK   
+            std::lock_guard<std::mutex> lock(shared_data->mutex);
             uint32_t currTime = currentTime();
             for(int i = 0; i < processes.size(); i++)
             {
@@ -119,7 +121,7 @@ int main(int argc, char **argv)
             }
 
             // sort the ready queue (if needed - based on scheduling algorithm)
-            //^check algorithm and relevant info of each item in ready q
+            //check algorithm and relevant info of each item in ready q
             if(shared_data->algorithm == ScheduleAlgorithm::SJF)
             {
                 shared_data->ready_queue.sort(SjfComparator());
@@ -128,16 +130,18 @@ int main(int argc, char **argv)
             {
                 shared_data->ready_queue.sort(PpComparator());
             }
-            
 
-
-
-        if(processes.size() == shared_data->terminated.size())
-        {
-            shared_data->all_terminated = true;
-        }
-
-        }//unlock
+            //check for half done and all done
+            if(shared_data->terminated.size() >= processes.size()/2 && half_time == 0)
+            {
+                half_time = currentTime();
+            }
+            if(processes.size() == shared_data->terminated.size())
+            {
+                shared_data->all_terminated = true;
+                end_time = currentTime();
+            }
+        }//UNLOCK
 
        
         // determine if all processes are in the terminated state <- release lock on ready q
@@ -167,6 +171,33 @@ int main(int argc, char **argv)
     //  - Average waiting time
 
 
+    double cpu_total = 0;
+    double turn_total = 0;
+    double wait_total = 0;
+    for(int i = 0; i < processes.size(); i++)
+    {
+        cpu_total += processes[i]->getCpuTime();
+        turn_total += processes[i]->getTurnaroundTime();
+        wait_total += processes[i]->getWaitTime();
+    }
+
+    double prog_runtime = (end_time - start)/1000.0;
+    double first_runtime = (half_time - start)/1000.0;
+    double second_runtime = (end_time - half_time)/1000.0;
+    double cpu_percent = (cpu_total/prog_runtime)*100.0;
+    double overall_throughput = processes.size()/prog_runtime;
+    double first_throughput = (processes.size()/2)/first_runtime;
+    double second_throughput = (processes.size()/2)/second_runtime;
+    double turn_avg = turn_total/processes.size(); 
+    double wait_avg = wait_total/processes.size(); 
+
+    std::cout << "CPU Utilization: " << cpu_percent << "%" << std::endl;
+    std::cout << "Throughput - Overall Average: " << overall_throughput << std::endl;
+    std::cout << "Throughput - 1st Half Average: " << first_throughput << std::endl;
+    std::cout << "Throughput - 2nd Half Average: " << second_throughput << std::endl;
+    std::cout << "Average Turnaround Time: " << turn_avg << std::endl;
+    std::cout << "Average Wait Time: " << wait_avg << std::endl;
+
     // Clean up before quitting program
     processes.clear();
 
@@ -193,15 +224,23 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
     bool inProcess = false;
     uint16_t currentBurst = -1;
     uint32_t currentBurstTime = 0;
+    uint32_t context_switch = shared_data->context_switch;
     while ((shared_data->all_terminated) != true){
         int readySize = 0;
-        {
+        {//LOCK
             std::lock_guard<std::mutex> lock(shared_data->mutex);
             readySize = shared_data->ready_queue.size();
-        }
+        }//UNLOCK
+
+        //If no process on core, check readyq
         if ( readySize > 0 && p == NULL){
+            {//LOCK
+            std::lock_guard<std::mutex> lock(shared_data->mutex);
+            readySize = shared_data->ready_queue.size();
             p = shared_data->ready_queue.front();
             shared_data->ready_queue.pop_front();
+            }//UNLOCK
+
             readySize = readySize - 1;
             p->setState(Process::State::Running, currentTime());
             p->setCpuCore(core_id);
@@ -223,14 +262,17 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
         //Code for First Come First Serve
         if (p != NULL && (shared_data->algorithm == ScheduleAlgorithm::FCFS || shared_data->algorithm == ScheduleAlgorithm::SJF)){
             p->updateProcess(currentTime());
-            if (p->getRemainingTime() <= 0){
+            if (p->getRemainingTime() <= 0){               
                 p->setState(Process::State::Terminated, currentTime());
                 p->setCpuCore(-1);
                 p->updateProcess(currentTime());
+                {//LOCK
+                std::lock_guard<std::mutex> lock(shared_data->mutex);
                 shared_data->terminated.push_back(p);
+                }//UNLOCK
                 p = NULL;
                 uint32_t lastContextTime = currentTime();
-                while (shared_data->context_switch >= currentTime() - lastContextTime){};
+                while (context_switch >= currentTime() - lastContextTime){};
             }
             else if (p->getBurstTimeElapsed() > p->getCurrentBurstTime()){
                 p->setState(Process::State::IO, currentTime());
@@ -241,7 +283,7 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
                 p->setCpuCore(-1);
                 p = NULL;
                 uint32_t lastContextTime = currentTime();
-                while (shared_data->context_switch >= currentTime() - lastContextTime){};
+                while (context_switch >= currentTime() - lastContextTime){};
             }
         }
         //Code for Round Robin
@@ -258,10 +300,13 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
                 p->setState(Process::State::Terminated, currentTime());
                 p->setCpuCore(-1);
                 p->updateProcess(currentTime());
+                {//LOCK
+                std::lock_guard<std::mutex> lock(shared_data->mutex);
                 shared_data->terminated.push_back(p);
+                }//UNLOCK
                 p = NULL;
                 uint32_t lastContextTime = currentTime();
-                while (shared_data->context_switch >= currentTime() - lastContextTime){};
+                while (context_switch >= currentTime() - lastContextTime){};
             }
             else if (p->getBurstTimeElapsed() > currentBurstTime){
                 p->setState(Process::State::IO, currentTime());
@@ -272,18 +317,21 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
                 p = NULL;
                 inRobin = false;
                 uint32_t lastContextTime = currentTime();
-                while (shared_data->context_switch >= currentTime() - lastContextTime){};
+                while (context_switch >= currentTime() - lastContextTime){};
             }
             else if ((currentTime() - p->getRoundRobinStartTime()) >= shared_data->time_slice){
                 p->setState(Process::State::Ready, currentTime());
                 p->updateBurstTime(p->getCurrentBurst(), currentTime() - p->getRoundRobinStartTime());
                 p->setIntoQueueTime(currentTime());
                 p->setCpuCore(-1);
+                {//LOCK
+                std::lock_guard<std::mutex> lock(shared_data->mutex);
                 shared_data->ready_queue.push_back(p);
+                }//UNLOCK
                 p = NULL;
                 inRobin = false;
                 uint32_t lastContextTime = currentTime();
-                while (shared_data->context_switch >= currentTime() - lastContextTime){};
+                while (context_switch >= currentTime() - lastContextTime){};
             }
         }
         //Code for PP
@@ -294,6 +342,9 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
             }
             p->updateProcess(currentTime());
             if (readySize != 0){
+                
+                {//LOCK
+                std::lock_guard<std::mutex> lock(shared_data->mutex);
                 if (shared_data->ready_queue.front()->getPriority() < p->getPriority()){
                     p->setState(Process::State::Ready, currentTime());
                     p->updateBurstTime(p->getCurrentBurst(), currentTime() - p->getPPTime());
@@ -303,19 +354,25 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
                     p = NULL;
                     inProcess = false;
                     uint32_t lastContextTime = currentTime();
-                    while (shared_data->context_switch >= currentTime() - lastContextTime){};
+                    while (context_switch >= currentTime() - lastContextTime){};
                 }
+                }//UNLOCK
+
             }
             if (p != NULL){
                 if (p->getRemainingTime() <= 0 ){
                     p->setState(Process::State::Terminated, currentTime());
                     p->setCpuCore(-1);
                     p->updateProcess(currentTime());
+
+                    {//LOCK
+                    std::lock_guard<std::mutex> lock(shared_data->mutex);
                     shared_data->terminated.push_back(p);
+                    }//UNLOCK
                     p = NULL;
                     inProcess = false;
                     uint32_t lastContextTime = currentTime();
-                    while (shared_data->context_switch >= currentTime() - lastContextTime){};
+                    while (context_switch >= currentTime() - lastContextTime){};
                 }
                 else if (p->getBurstTimeElapsed() > p->getCurrentBurstTime()){
                     p->setState(Process::State::IO, currentTime());
@@ -327,7 +384,7 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
                     inProcess = false;
                     p = NULL;
                     uint32_t lastContextTime = currentTime();
-                    while (shared_data->context_switch >= currentTime() - lastContextTime){};
+                    while (context_switch >= currentTime() - lastContextTime){};
                 }
             }
             
