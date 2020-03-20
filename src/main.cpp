@@ -341,24 +341,26 @@ void coreRunProcesses(uint8_t core_id, SchedulerData *shared_data)
                 inProcess = true;
             }
             p->updateProcess(currentTime());
-            if (readySize != 0){
-                
-                {//LOCK
+            //LOCK
+            {
                 std::lock_guard<std::mutex> lock(shared_data->mutex);
-                if (shared_data->ready_queue.front()->getPriority() < p->getPriority()){
-                    p->setState(Process::State::Ready, currentTime());
-                    p->updateBurstTime(p->getCurrentBurst(), currentTime() - p->getPPTime());
-                    p->setIntoQueueTime(currentTime());
-                    p->setCpuCore(-1);
-                    shared_data->ready_queue.push_back(p);
-                    p = NULL;
-                    inProcess = false;
-                    uint32_t lastContextTime = currentTime();
-                    while (context_switch >= currentTime() - lastContextTime){};
+                if (shared_data->ready_queue.size() != 0){
+                    
+                    Process *next = shared_data->ready_queue.front();
+                    if (next->getPriority() < p->getPriority()){
+                        next = NULL;
+                        p->setState(Process::State::Ready, currentTime());
+                        p->updateBurstTime(p->getCurrentBurst(), currentTime() - p->getPPTime());
+                        p->setIntoQueueTime(currentTime());
+                        p->setCpuCore(-1);
+                        shared_data->ready_queue.push_back(p);
+                        p = NULL;
+                        inProcess = false;
+                        uint32_t lastContextTime = currentTime();
+                        while (context_switch >= currentTime() - lastContextTime){};
+                    }
                 }
-                }//UNLOCK
-
-            }
+            } //UNLOCK
             if (p != NULL){
                 if (p->getRemainingTime() <= 0 ){
                     p->setState(Process::State::Terminated, currentTime());
